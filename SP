@@ -1,0 +1,72 @@
+import sys
+import random
+from pathlib import Path
+import importlib
+
+# ------------------ character sets ------------------
+
+upper = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+lower = list("abcdefghijklmnopqrstuvwxyz")
+number = list("123456789")
+symbol = ['!','@','£','$','%','&','*','-','_']
+
+# ------------------ output file ------------------
+
+savingSP_file = Path("savingSP.py")
+
+# ------------------ password generator ------------------
+
+def generate_password(length=16):
+    req_char = [
+        random.choice(upper),
+        random.choice(lower),
+        random.choice(number),
+        random.choice(symbol)
+    ]
+
+    all_char = upper + lower + number + symbol
+    req_char += random.choices(all_char, k=length - 4)
+    random.shuffle(req_char)
+
+    return ''.join(req_char)
+
+# ------------------ save password safely ------------------
+
+def save_password(account_name, password):
+    accounts = {}
+
+    # Load existing accounts
+    if savingSP_file.exists():
+        for line in savingSP_file.read_text().splitlines():
+            if "=" in line:
+                name, value = line.split("=", 1)
+                accounts[name.strip()] = value.strip()
+
+    # Update or add account
+    accounts[account_name] = repr(password)
+
+    # Write back to file
+    with savingSP_file.open("w") as f:
+        for name, value in accounts.items():
+            f.write(f"{name} = {value}\n")
+
+    # Reload module so imports update
+    if "savingSP" in sys.modules:
+        importlib.reload(sys.modules["savingSP"])
+
+# ------------------ main loop ------------------
+
+try:
+    while True:
+        account = input("Enter account name (or N to quit): ").strip()
+        if account.upper() == "N":
+            print("Goodbye!")
+            break
+
+        password = generate_password()
+        print(f"{account} password: {password}")
+
+        save_password(account, password)
+
+except KeyboardInterrupt:
+    sys.exit()
