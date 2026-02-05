@@ -1,0 +1,52 @@
+import csv
+import smtplib
+from datetime import datetime, timedelta
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# =====================
+# CONFIGUARTION
+# =====================
+CSV_FILE = "applications.csv"
+
+SMTP_SERVER = "smtp.office365.com"
+SMTP_PORT = 587
+SENDER_EMAIL = "your_email@company.com"
+SENDER_PASSWORD = "your_email_password"
+
+# =====================
+# HELPERS
+# =====================
+def is_weekday(date):
+    return date.weekday() < 5  # Mon–Fri
+
+def send_email(to_email, subject, body):
+    msg = MIMEMultipart()
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = to_email
+    msg["Subject"] = subject
+
+    msg.attach(MIMEText(body, "plain"))
+
+    server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+    server.starttls()
+    server.login(SENDER_EMAIL, SENDER_PASSWORD)
+    server.send_message(msg)
+    server.quit()
+# =====================
+# MAIN
+# =====================
+today = datetime.today().date()
+
+# No emails on weekends
+if not is_weekday(today):
+    print("Weekend — no emails sent.")
+    quit()
+
+with open(CSV_FILE, newline="", encoding="utf-8") as file:
+    reader = csv.DictReader(file)
+
+    for row in reader:
+        product = row["Product Name"]
+        owner_email = row["Product Owner"]
+        active = row["Active"].strip().lower()
