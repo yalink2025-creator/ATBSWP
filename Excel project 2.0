@@ -1,0 +1,149 @@
+import csv
+import os
+import smtplib
+from datetime import datetime, timedelta
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import sys
+
+
+
+# =====================
+# LOGGING SETUP
+# =====================
+LOG_FILE = "debug_log.txt"
+
+def log(message):
+    """Prints to screen (if possible) and writes to log file."""
+    try:
+        print(message, flush=True)  # flush ensures immediate output
+    except:
+        pass
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(message + "\n")
+
+# Clear old log
+with open(LOG_FILE, "w", encoding="utf-8") as f:
+    f.write("=== Starting log ===\n")
+
+# =====================
+# CONFIG
+# =====================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_FILE = os.path.join(BASE_DIR, "project_excel_file.CSV")  # exact filename
+
+SMTP_SERVER = "smtp.office365.com"
+SMTP_PORT = 587
+SENDER_EMAIL = "your_email@company.com"
+SENDER_PASSWORD = "your_email_password"
+
+# Safety: test mode
+TEST_MODE = True
+TEST_EMAIL = SENDER_EMAIL  # emails go only to you when testing
+
+# =====================
+# HELPERS
+# =====================
+def is_weekday(date):
+    return date.weekday() < 5  # Mon–Fri
+
+def send_email(to_email, subject, body):
+    msg = MIMEMultipart()
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
+
+def parse_date(date_str):
+    """Handle common Excel/CSV date formats"""
+    for fmt in ("%d-%b-%y", "%d-%b-%Y", "%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(date_str.strip(), fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Unrecognized date format: {date_str}")
+
+# =====================
+# MAIN
+# =====================
+log("Looking for CSV at: " + CSV_FILE)
+
+if not os.path.exists(CSV_FILE):
+    raise FileNotFoundError("CSV file not found at the path above!")
+
+today = datetime.today().date()
+log("Today is: " + str(today))
+
+if not is_weekday(today):
+    log("Weekend — no emails sent.")
+    sys.exit()
+
+with open(CSV_FILE, newline="", encoding="utf-8-sig") as file:
+    reader = csv.DictReader(file)
+    rows = list(reader)
+    log(f"Total rows in CSV: {len(rows)}")
+    log("Detected columns: " + str(reader.fieldnames))
+
+    for i, row in enumerate(rows, start=1):
+        log(f"\n--- Processing row {i} ---")
+        log(str(row))
+        try:
+            product = row["Product Name"].strip()
+            owner_email = row["Product Owner"].strip()
+            active = row["Active"].strip().lower()
+            log("Active status: " + active)
+
+            if active != "yes":
+                log("Skipping row because Active != yes")
+                continue
+
+            renewal_date = parse_date(row["Renewal Date"])
+            notice_days = int(row["Notice Period"].split()[0])
+            decision_date = renewal_date - timedelta(days=notice_days)
+            email_start_date = decision_date - timedelta(days=60)
+
+            log(f"Renewal date: {renewal_date}")
+            log(f"Notice period days: {notice_days}")
+            log(f"Decision date: {decision_date}")
+            log(f"Email start date: {email_start_date}")
+
+            if today > renewal_date:
+                log("Skipping row because renewal date has passed")
+                continue
+
+            if email_start_date <= today <= renewal_date:
+                subject = f"Renewal Reminder: {product}"
+                body = f"""Hello,
+
+{product} renewal will be on {renewal_date}.
+It has {notice_days} days notice period.
+We should confirm till {decision_date}.
+
+Here are details of app:
+
+Product Name: {product}
+Version: {row['Version']}
+Vendor: {row['Vendor']}
+Reseller: {row['Reseller']}
+Cost: {row['Cost']}
+Support Group: {row['Support Group']}
+
+Regards,
+Procurement Assistant App
+"""
+                recipient = TEST_EMAIL if TEST_MODE else owner_email
+                log(f"Sending email to: {recipient}")
+                send_email(recipient, subject, body)
+                log(f"Email sent for {product} → {recipient}")
+            else:
+                log("Not in email reminder window yet")
+
+        except Exception as e:
+            log(f"Skipped row due to error: {e}")
+
+log("\nDone. Log saved to debug_log.txt")
