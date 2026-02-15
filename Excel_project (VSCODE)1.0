@@ -1,0 +1,118 @@
+import pandas as pd
+import smtplib
+import ssl
+from datetime import datetime, timedelta
+from email.message import EmailMessage
+import os
+
+# ==========================
+# CONFIGURATION
+# ==========================
+
+EXCEL_FILE = "renewals.xlsx"
+
+SMTP_SERVER = "smtp.office365.com"  # Change if using Gmail
+SMTP_PORT = 587
+SENDER_EMAIL = "your_email@company.com"
+SENDER_PASSWORD = "your_password"  # Use app password if possible
+
+# ==========================
+# FUNCTIONS
+# ==========================
+
+def is_weekday():
+    today = datetime.today()
+    return today.weekday() < 5  # 0=Monday, 6=Sunday
+
+
+def send_email(to_email, subject, body):
+    msg = EmailMessage()
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(body)
+
+    context = ssl.create_default_context()
+
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls(context=context)
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
+
+
+def process_renewals():
+    if not os.path.exists(EXCEL_FILE):
+        print("Excel file not found.")
+        return
+
+    df = pd.read_excel(EXCEL_FILE)
+
+    today = datetime.today()
+
+    for index, row in df.iterrows():
+
+        # Skip if not active
+        if str(row["Active"]).strip().lower() != "yes":
+            continue
+
+        product_name = row["Product Name"]
+        renewal_date = pd.to_datetime(row["Renewal Date"])
+        notice_period_text = str(row["Notice Period"]).split()[0]
+        notice_days = int(notice_period_text)
+
+        decision_date = renewal_date - timedelta(days=notice_days)
+        reminder_start_date = decision_date - timedelta(days=60)
+
+        # Stop if renewal date already passed
+        if today > renewal_date:
+            continue
+
+        # Check if we are inside reminder window
+        if reminder_start_date <= today <= decision_date:
+
+            if not is_weekday():
+                print("Weekend - no email sent.")
+                return
+
+            days_notice = notice_days
+            confirm_by = decision_date.strftime("%d-%b-%Y")
+
+            body = f"""
+Hello,
+
+{product_name} renewal will be on {renewal_date.strftime('%d-%b-%Y')}.
+It has {days_notice} days notice period.
+We should confirm till {confirm_by}.
+
+Here are details of app:
+
+Product Name: {row['Product Name']}
+Version: {row['Version']}
+Vendor: {row['Vendor']}
+Cost: {row['Cost']}
+Support Group: {row['Support Group']}
+
+Regards,
+Procurement Assistant App
+"""
+
+            subject = f"Renewal Reminder - {product_name}"
+
+            try:
+                send_email(row["Product Owner"], subject, body)
+                print(f"Reminder sent for {product_name}")
+            except Exception as e:
+                print(f"Failed sending email for {product_name}: {e}")
+
+    print("Process completed.")
+
+
+# ==========================
+# MAIN
+# ==========================
+
+if __name__ == "__main__":
+    if is_weekday():
+        process_renewals()
+    else:
+        print("Weekend - no processing.")
