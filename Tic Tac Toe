@@ -1,0 +1,93 @@
+from random import randrange
+
+# Initial board
+board = [
+    [1, 2, 3],
+    [4, 'X', 6],
+    [7, 8, 9]
+]
+
+
+def display_board(board):
+    for row in board:
+        print("+-------+-------+-------+")
+        print("|       |       |       |")
+        print("|  {}   |  {}   |  {}   |".format(row[0], row[1], row[2]))
+        print("|       |       |       |")
+    print("+-------+-------+-------+")
+
+
+def enter_move(board):
+    while True:
+        move = int(input("Enter your move: "))
+        if move < 1 or move > 9:
+            continue
+
+        for i in range(3):
+            for j in range(3):
+                if board[i][j] == move:
+                    board[i][j] = 'O'
+                    return
+
+
+def make_list_of_free_fields(board):
+    free = []
+    for i in range(3):
+        for j in range(3):
+            if isinstance(board[i][j], int):
+                free.append((i, j))
+    return free
+
+
+def victory_for(board, sign):
+    # rows
+    for row in board:
+        if row.count(sign) == 3:
+            return True
+
+    # columns
+    for col in range(3):
+        if board[0][col] == sign and board[1][col] == sign and board[2][col] == sign:
+            return True
+
+    # diagonals
+    if board[0][0] == sign and board[1][1] == sign and board[2][2] == sign:
+        return True
+    if board[0][2] == sign and board[1][1] == sign and board[2][0] == sign:
+        return True
+
+    return False
+
+
+def draw_move(board):
+    free = make_list_of_free_fields(board)
+    if free:
+        move = free[randrange(len(free))]
+        board[move[0]][move[1]] = 'X'
+
+
+# Game loop
+while True:
+    display_board(board)
+
+    if victory_for(board, 'X'):
+        print("Computer won!")
+        break
+
+    if not make_list_of_free_fields(board):
+        print("Tie!")
+        break
+
+    enter_move(board)
+
+    display_board(board)
+
+    if victory_for(board, 'O'):
+        print("You won!")
+        break
+
+    if not make_list_of_free_fields(board):
+        print("Tie!")
+        break
+
+    draw_move(board)
