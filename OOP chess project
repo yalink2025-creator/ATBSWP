@@ -1,0 +1,259 @@
+FILES = "abcdefgh"
+
+def parse_square(square):
+    square = square.strip().lower()
+    file = FILES.index(square[0])
+    rank = 8 - int(square[1])
+    return rank, file
+
+
+class Piece:
+    def __init__(self, colour):
+        self.colour = colour
+        self.has_moved = False
+
+
+class Pawn(Piece):
+    def moves(self, board, r, c):
+        moves = []
+        direction = -1 if self.colour == "white" else 1
+
+        nr = r + direction
+        if board.in_bounds(nr, c) and board.grid[nr][c] is None:
+            moves.append((nr, c))
+
+            start_row = 6 if self.colour == "white" else 1
+            if r == start_row:
+                nr2 = r + 2 * direction
+                if board.in_bounds(nr2, c) and board.grid[nr2][c] is None:
+                    moves.append((nr2, c))
+
+        for dc in [-1, 1]:
+            nr = r + direction
+            nc = c + dc
+            if board.in_bounds(nr, nc):
+                target = board.grid[nr][nc]
+                if target and target.colour != self.colour:
+                    moves.append((nr, nc))
+
+        return moves
+
+    def attacks(self, board, r, c):
+        direction = -1 if self.colour == "white" else 1
+        attacks = []
+        for dc in [-1, 1]:
+            nr = r + direction
+            nc = c + dc
+            if board.in_bounds(nr, nc):
+                attacks.append((nr, nc))
+        return attacks
+
+
+class Knight(Piece):
+    def moves(self, board, r, c):
+        jumps = [(2,1),(2,-1),(-2,1),(-2,-1),(1,2),(1,-2),(-1,2),(-1,-2)]
+        moves = []
+        for dr, dc in jumps:
+            nr, nc = r+dr, c+dc
+            if board.in_bounds(nr,nc):
+                if not board.same_colour(nr,nc,self.colour):
+                    moves.append((nr,nc))
+        return moves
+
+    def attacks(self, board, r, c):
+        return self.moves(board, r, c)
+
+
+class Bishop(Piece):
+    def moves(self, board, r, c):
+        return board.sliding_moves(r,c,self.colour,[(1,1),(1,-1),(-1,1),(-1,-1)])
+    def attacks(self, board, r, c):
+        return self.moves(board, r, c)
+
+
+class Rook(Piece):
+    def moves(self, board, r, c):
+        return board.sliding_moves(r,c,self.colour,[(1,0),(-1,0),(0,1),(0,-1)])
+    def attacks(self, board, r, c):
+        return self.moves(board, r, c)
+
+
+class Queen(Piece):
+    def moves(self, board, r, c):
+        return board.sliding_moves(r,c,self.colour,[(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)])
+    def attacks(self, board, r, c):
+        return self.moves(board, r, c)
+
+
+class King(Piece):
+    def moves(self, board, r, c):
+        moves = []
+        for dr in [-1,0,1]:
+            for dc in [-1,0,1]:
+                if dr==0 and dc==0:
+                    continue
+                nr, nc = r+dr, c+dc
+                if board.in_bounds(nr,nc):
+                    if not board.same_colour(nr,nc,self.colour):
+                        moves.append((nr,nc))
+        return moves
+
+    def attacks(self, board, r, c):
+        return self.moves(board, r, c)
+
+
+class Board:
+    def __init__(self):
+        self.grid = [[None for _ in range(8)] for _ in range(8)]
+        self.setup()
+
+    def in_bounds(self,r,c):
+        return 0<=r<8 and 0<=c<8
+
+    def same_colour(self,r,c,colour):
+        if not self.in_bounds(r,c):
+            return False
+        p = self.grid[r][c]
+        return p is not None and p.colour == colour
+
+    def sliding_moves(self,r,c,colour,directions):
+        moves = []
+        for dr,dc in directions:
+            nr,nc = r+dr,c+dc
+            while self.in_bounds(nr,nc):
+                if self.same_colour(nr,nc,colour):
+                    break
+                moves.append((nr,nc))
+                if self.grid[nr][nc] is not None:
+                    break
+                nr += dr
+                nc += dc
+        return moves
+
+    def setup(self):
+        for c in range(8):
+            self.grid[6][c] = Pawn("white")
+            self.grid[1][c] = Pawn("black")
+
+        back = [Rook,Knight,Bishop,Queen,King,Bishop,Knight,Rook]
+
+        for c,piece in enumerate(back):
+            self.grid[7][c] = piece("white")
+            self.grid[0][c] = piece("black")
+
+    def move(self,fr,fc,tr,tc):
+        piece = self.grid[fr][fc]
+        self.grid[tr][tc] = piece
+        self.grid[fr][fc] = None
+        piece.has_moved = True
+
+    def find_king(self,colour):
+        for r in range(8):
+            for c in range(8):
+                p = self.grid[r][c]
+                if isinstance(p,King) and p.colour == colour:
+                    return r,c
+
+    def is_in_check(self,colour):
+        kr,kc = self.find_king(colour)
+
+        for r in range(8):
+            for c in range(8):
+                p = self.grid[r][c]
+                if p and p.colour != colour:
+                    if (kr,kc) in p.attacks(self,r,c):
+                        return True
+        return False
+
+    def legal_moves(self,r,c):
+        piece = self.grid[r][c]
+        if not piece:
+            return []
+
+        moves = piece.moves(self,r,c)
+        legal = []
+
+        import copy
+        for tr,tc in moves:
+            test = copy.deepcopy(self)
+            test.move(r,c,tr,tc)
+            if not test.is_in_check(piece.colour):
+                legal.append((tr,tc))
+
+        return legal
+
+    def display(self):
+        symbols = {
+            Pawn:"p",Knight:"n",Bishop:"b",
+            Rook:"r",Queen:"q",King:"k"
+        }
+
+        print("\n  a b c d e f g h")
+        print(" ---------------+")
+        for r in range(8):
+            line = str(8-r) + " "
+            for c in range(8):
+                p = self.grid[r][c]
+                if not p:
+                    line += ". "
+                else:
+                    s = symbols[type(p)]
+                    if p.colour=="white":
+                        s = s.upper()
+                    line += s + " "
+            print(line + str(8-r))
+        print("  a b c d e f g h")
+        print(" ---------------+")
+
+
+class Game:
+    def __init__(self):
+        self.board = Board()
+        self.turn = "white"
+
+    def switch(self):
+        self.turn = "black" if self.turn=="white" else "white"
+
+    def play(self):
+        while True:
+            self.board.display()
+            print("Turn:", self.turn)
+
+            move = input("Move (e2 e4 or O-O): ").strip()
+
+            if move == "O-O":
+                fr, fc = 7, 4 if self.turn == "white" else 0, 4
+                tr, tc = 7, 6 if self.turn == "white" else 0, 6
+                castle = "king"
+
+            elif move == "O-O-O":
+                fr, fc = 7, 4 if self.turn == "white" else 0, 4
+                tr, tc = 7, 2 if self.turn == "white" else 0, 2
+                castle = "queen"
+
+            else:
+                parts = move.split()
+                if len(parts) != 2:
+                    continue
+                fr, fc = parse_square(parts[0])
+                tr, tc = parse_square(parts[1])
+                castle = None
+
+            piece = self.board.grid[fr][fc]
+
+            if not piece or piece.colour != self.turn:
+                print("Invalid piece")
+                continue
+
+            legal = self.board.legal_moves(fr,fc)
+
+            if (tr,tc) not in legal:
+                print("Illegal move")
+                continue
+
+            self.board.move(fr,fc,tr,tc)
+            self.switch()
+
+
+game = Game()
+game.play()
